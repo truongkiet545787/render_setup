@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, TIMESTAMP, text, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -50,7 +51,7 @@ class ChatMessage(Base):
     session_id = Column(String, index=True, nullable=False)
     role = Column(String, nullable=False) # 'user' or 'assistant'
     content = Column(Text, nullable=False)
-    time_created = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    time_created = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 class MealHistory(Base):
     __tablename__ = 'meal_history'
@@ -58,4 +59,4 @@ class MealHistory(Base):
     product_name = Column(String, nullable=False)
     calories = Column(Float, nullable=False, default=0.0)
     portion_size = Column(Float, nullable=False, default=100.0) # in grams
-    time_created = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    time_created = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
