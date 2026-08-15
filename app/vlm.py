@@ -38,7 +38,7 @@ def identify_food_from_image(image_bytes: bytes) -> str:
             }
         }
         try:
-            with httpx.Client(timeout=10.0) as client:
+            with httpx.Client(timeout=30.0) as client:
                 response = client.post(url, json=payload)
                 if response.status_code == 200:
                     result = response.json()
@@ -87,7 +87,7 @@ def identify_food_from_image(image_bytes: bytes) -> str:
             logger.info(f"[VLM] Trying Groq Vision (Key #{attempt_idx + 1} / {len(groq_keys)})...")
 
             try:
-                with httpx.Client(timeout=10.0) as client:
+                with httpx.Client(timeout=30.0) as client:
                     response = client.post(url, headers=headers, json=payload)
                     if response.status_code == 200:
                         result = response.json()
