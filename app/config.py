@@ -3,11 +3,11 @@ from typing import Optional
 
 class Settings(BaseSettings):
     database_url: Optional[str] = None
-    database_hostname: Optional[str] = "localhost"
+    database_hostname: Optional[str] = None
     database_port: Optional[str] = "5432"
-    database_password: Optional[str] = "postgres"
-    database_name: Optional[str] = "postgres"
-    database_username: Optional[str] = "postgres"
+    database_password: Optional[str] = None
+    database_name: Optional[str] = None
+    database_username: Optional[str] = None
     redis_host: Optional[str] = None
     redis_port: Optional[int] = 6379
     groq_api_key: Optional[str] = None
