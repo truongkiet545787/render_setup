@@ -64,7 +64,7 @@ def identify_food_from_image(image_bytes: bytes) -> str:
                     "content": [
                         {
                             "type": "text",
-                            "text": "Identify the main food dish (Vietnamese or international, fast food), vegetable, fruit, beverage, or packaged item (like snacks, biscuits) in this image. Return ONLY the name in Vietnamese (e.g., 'Bánh Oreo', 'Nước ngọt Coca-Cola', 'Quả táo', 'Bún bò Huế', 'Hamburger'). Ensure highly accurate translation (e.g., Blueberry is 'Việt quất' or 'Quả việt quất', NOT 'Quất'). Do not include any other explanation, text or punctuation."
+                            "text": "Identify the main food dish, fruit, vegetable, beverage, snack, or packaged grocery item in this image. Return ONLY the concise name in Vietnamese (1 to 4 words, e.g., 'Thạch trái cây', 'Sữa chua', 'Bánh mì', 'Phở bò'). Do NOT output long reasoning, conversational filler, or explanations. Return ONLY the food name."
                         },
                         {
                             "type": "image_url",
@@ -76,7 +76,7 @@ def identify_food_from_image(image_bytes: bytes) -> str:
                 }
             ],
             "temperature": 0.1,
-            "max_tokens": 1024
+            "max_tokens": 4096
         }
 
         for attempt_idx, current_key in enumerate(groq_keys):
@@ -94,38 +94,37 @@ def identify_food_from_image(image_bytes: bytes) -> str:
                         text = result["choices"][0]["message"]["content"].strip()
                         logger.info(f"[VLM] Raw response: {repr(text)}")
                         
-                        # Remove <think>...</think> blocks
                         import re
+                        # 1. Clean closed thinking block
                         cleaned_text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
                         
-                        # If the thinking block wasn't closed or cleaned_text is empty, split it
+                        # 2. If unclosed thinking block or empty, parse conclusion from the end
                         if not cleaned_text or "<think>" in text:
                             parts = text.split("</think>")
                             if len(parts) > 1 and parts[-1].strip():
                                 cleaned_text = parts[-1].strip()
                             else:
-                                raw_lower = text.lower()
-                                foods = [
-                                    "phở bò", "phở gà", "phở", "bánh mì", "bún chả", "cơm tấm", "gỏi cuốn",
-                                    "bún bò huế", "bún đậu mắm tôm", "bánh bao", "bánh chưng", "bánh tét",
-                                    "bánh tráng nướng", "bánh trung thu", "rau muống xào", "thịt kho tàu",
-                                    "xôi xéo", "nui xào", "ốc bươu hấp", "cơm chiên", "com chien", "cơm lam", 
-                                    "gà giòn", "gà rán", "khoai tây chiên", "pizza", "burger", "donut", "hot dog",
-                                    "bánh oreo", "oreo", "táo", "cam", "chuối", "sữa", "coca", "pepsi", "snack", "bia"
-                                ]
-                                matched = None
-                                for food in foods:
-                                    if food in raw_lower:
-                                        matched = food
-                                        break
+                                # Extract quoted terms near the end of the thought process
+                                quotes = re.findall(r'["\']([^"\']{2,40})["\']', text)
+                                if quotes:
+                                    # Pick the last quoted food name that is not a generic prompt phrase
+                                    valid_quotes = [q.strip() for q in quotes if len(q.strip()) > 2 and "the" not in q.lower() and "main" not in q.lower()]
+                                    if valid_quotes:
+                                        cleaned_text = valid_quotes[-1]
                                 
-                                if matched:
-                                    cleaned_text = matched.title()
-                                else:
-                                    cleaned_text = "Phở bò"
+                                if not cleaned_text:
+                                    # Fallback: scan lines backwards from the end
+                                    lines = [l.strip().lstrip("*- ").strip() for l in text.split("\n") if l.strip()]
+                                    for line in reversed(lines):
+                                        if len(line) <= 50 and not line.startswith("<") and not line.startswith("Let") and not line.startswith("The"):
+                                            cleaned_text = line
+                                            break
+
+                        if not cleaned_text:
+                            cleaned_text = "Món ăn"
                         
-                        # Clean up quotes
-                        cleaned_text = cleaned_text.replace('"', '').replace("'", "")
+                        # Clean up quotes, brackets, and extra punctuation
+                        cleaned_text = cleaned_text.replace('"', '').replace("'", "").replace("*", "").strip()
                         logger.info(f"[VLM] Groq identified food: {cleaned_text}")
                         return cleaned_text
                     elif response.status_code in (429, 401, 503):
