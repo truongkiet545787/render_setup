@@ -24,7 +24,7 @@ def get_llm(api_key: Optional[str] = None):
     try:
         from langchain_groq import ChatGroq
         return ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model=settings.groq_model or "openai/gpt-oss-120b",
             groq_api_key=key,
             temperature=0.7
         )

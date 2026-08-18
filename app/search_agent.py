@@ -83,7 +83,7 @@ def call_llm_json(prompt: str, system_instruction: str) -> dict:
     if groq_keys:
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": settings.groq_model or "openai/gpt-oss-120b",
             "messages": [
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": prompt}

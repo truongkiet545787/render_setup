@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     redis_port: Optional[int] = 6379
     groq_api_key: Optional[str] = None
     groq_api_keys: Optional[str] = None
+    groq_model: str = "openai/gpt-oss-120b"
     tavily_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
 
