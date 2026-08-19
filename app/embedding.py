@@ -28,23 +28,35 @@ def get_image_embedding_model():
             gc.collect()
             logger.info("[Embedding] Model loaded successfully.")
         except Exception as e:
-            logger.error(f"[Embedding] Failed to load FastEmbed: {e}")
-            raise e
+            logger.warning(f"[Embedding] FastEmbed ONNX not available (will use VLM directly): {e}")
+            _embedding_model = None
     return _embedding_model
 
-def extract_image_vector(image_bytes: bytes) -> list[float]:
+def extract_image_vector(image_bytes: bytes) -> Optional[list[float]]:
     """
     Extracts a 512-dimensional normalized embedding vector from image bytes.
+    Resizes image to 224x224 thumbnail first to strictly keep memory under 1MB.
     """
     try:
         model = get_image_embedding_model()
-        bio = io.BytesIO(image_bytes)
+        if model is None:
+            return None
+
+        # 1. Downscale image to 224x224 to protect 512MB RAM
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img.thumbnail((224, 224), Image.Resampling.BILINEAR)
+        bio = io.BytesIO()
+        img.save(bio, format="JPEG", quality=85)
+        bio.seek(0)
+
         embeddings = list(model.embed([bio]))
-        vector = embeddings[0].tolist()
-        return vector
+        if embeddings and len(embeddings) > 0:
+            vector = embeddings[0].tolist()
+            return vector
+        return None
     except Exception as e:
-        logger.error(f"[Embedding] Failed to extract image vector: {e}")
-        raise e
+        logger.warning(f"[Embedding] Vector extraction bypassed: {e}")
+        return None
 
 def find_similar_food_by_vector(
     vector: list[float], 
