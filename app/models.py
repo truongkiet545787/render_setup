@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 from .database import Base
 
 class Product(Base):
@@ -13,6 +14,17 @@ class Product(Base):
     nutrition = relationship("Nutrition", back_populates="product", uselist=False, cascade="all, delete-orphan")
     ingredients = relationship("Ingredient", back_populates="product", cascade="all, delete-orphan")
     allergens = relationship("Allergen", back_populates="product", cascade="all, delete-orphan")
+    embeddings = relationship("FoodEmbedding", back_populates="product", cascade="all, delete-orphan")
+
+class FoodEmbedding(Base):
+    __tablename__ = 'food_embeddings'
+    id = Column(Integer, primary_key=True, nullable=False, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    embedding = Column(Vector(512), nullable=False)
+    source = Column(String, nullable=True, default="vlm_cache") # 'dataset', 'vlm_cache', 'manual'
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    product = relationship("Product", back_populates="embeddings")
 
 class Nutrition(Base):
     __tablename__ = 'nutrition'

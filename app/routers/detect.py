@@ -8,6 +8,7 @@ from ..database import get_db
 from .. import models, schemas
 from ..redis import get_cache, set_cache
 from ..config import settings
+from ..embedding import extract_image_vector, find_similar_food_by_vector, save_food_vector
 
 logger = logging.getLogger("uvicorn.error")
 router = APIRouter(
@@ -17,6 +18,11 @@ router = APIRouter(
 
 # Helper function to save product details to DB and cache
 def save_new_food_to_db_and_cache(name: str, details: dict, db: Session) -> models.Product:
+    # Check if already exists in DB
+    existing = db.query(models.Product).filter(models.Product.name == name.strip().lower()).first()
+    if existing:
+        return existing
+
     # 1. Create Product
     product = models.Product(
         name=name.strip().lower(),
@@ -75,13 +81,12 @@ def detect_food(name: str, db: Session = Depends(get_db)):
     
     logger.info(f"Cache MISS for food: {normalized_name}. Checking PostgreSQL...")
 
-    # 2. Check PostgreSQL Database
+    # 2. Check Database
     product = db.query(models.Product).filter(models.Product.name == normalized_name).first()
     
     if product:
         logger.info(f"Database HIT for food: {normalized_name}")
         product_schema = schemas.ProductResponse.model_validate(product)
-        # Save to Cache
         set_cache(cache_key, product_schema.model_dump())
         return schemas.DetectResponse(
             name=name,
@@ -115,52 +120,58 @@ def detect_food_from_image(file: UploadFile = File(...), db: Session = Depends(g
         # 1. Read file bytes
         image_bytes = file.file.read()
         
-        # 2. Run VLM to identify name
+        # 2. Extract image embedding vector
+        image_vector = None
+        try:
+            image_vector = extract_image_vector(image_bytes)
+        except Exception as embed_err:
+            logger.warning(f"[Embedding] Failed to extract image vector: {embed_err}")
+
+        # 3. Check Vector DB Cache (Visual Similarity Search)
+        if image_vector is not None:
+            vector_match = find_similar_food_by_vector(image_vector, db, similarity_threshold=0.85)
+            if vector_match:
+                product, sim = vector_match
+                logger.info(f"🎯 [Vector Cache HIT] Matched '{product.name}' with similarity {sim:.4f} - Skipping VLM!")
+                product_schema = schemas.ProductResponse.model_validate(product)
+                return schemas.DetectResponse(
+                    name=product.name,
+                    product_found=True,
+                    details=product_schema
+                )
+
+        logger.info("[Vector Cache MISS] Image not found in vector database. Calling VLM...")
+        
+        # 4. Fallback to VLM to identify food name
         from ..vlm import identify_food_from_image
         identified_name = identify_food_from_image(image_bytes)
-        
         normalized_name = identified_name.strip().lower()
         
-        # 3. Check cache/database
-        cache_key = f"nutrition:{normalized_name}"
-        cached_data = get_cache(cache_key)
-        if cached_data:
-            logger.info(f"Cache HIT for VLM-identified food: {normalized_name}")
-            return schemas.DetectResponse(
-                name=identified_name,
-                product_found=True,
-                details=schemas.ProductResponse(**cached_data)
-            )
-            
+        # 5. Check if food details exist in DB/Redis
         product = db.query(models.Product).filter(models.Product.name == normalized_name).first()
-        if product:
+        
+        if not product:
+            logger.info(f"Database MISS for VLM-identified food: {normalized_name}. Triggering search agent...")
+            from ..search_agent import query_nutrition_for_food
+            details = query_nutrition_for_food(identified_name)
+            product = save_new_food_to_db_and_cache(normalized_name, details, db)
+        else:
             logger.info(f"Database HIT for VLM-identified food: {normalized_name}")
-            product_schema = schemas.ProductResponse.model_validate(product)
-            set_cache(cache_key, product_schema.model_dump())
-            return schemas.DetectResponse(
-                name=identified_name,
-                product_found=True,
-                details=product_schema
-            )
-            
-        # 4. Database MISS: Trigger Agent Search
-        logger.info(f"Database MISS for VLM-identified food: {normalized_name}. Triggering search agent...")
-        from ..search_agent import query_nutrition_for_food
-        details = query_nutrition_for_food(identified_name)
-        
-        # Save to DB & cache
-        product = save_new_food_to_db_and_cache(normalized_name, details, db)
+
+        # 6. Save this new image vector to Vector DB so future scans HIT the cache!
+        if image_vector is not None and product:
+            save_food_vector(product_id=product.id, vector=image_vector, source="vlm_cache", db=db)
+
         product_schema = schemas.ProductResponse.model_validate(product)
-        
         return schemas.DetectResponse(
             name=identified_name,
             product_found=True,
             details=product_schema
         )
+
     except Exception as e:
         logger.error(f"Error in detect_food_from_image: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process image: {str(e)}"
         )
-

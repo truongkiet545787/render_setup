@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -17,7 +17,12 @@ if settings.database_url:
     try:
         temp_engine = create_engine(db_url)
         with temp_engine.connect() as conn:
-            pass
+            # Enable pgvector if available
+            try:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                conn.commit()
+            except Exception as ext_err:
+                logger.warning(f"[Database] Could not auto-enable vector extension: {ext_err}")
         engine = temp_engine
         logger.info("[Database] Connected to PostgreSQL via DATABASE_URL.")
     except Exception as e:
@@ -28,7 +33,11 @@ if engine is None and settings.database_hostname and settings.database_password:
         SQLALCHEMY_DATABASE_URL = f"postgresql://{settings.database_username or 'postgres'}:{settings.database_password}@{settings.database_hostname}:{settings.database_port or '5432'}/{settings.database_name or 'postgres'}"
         temp_engine = create_engine(SQLALCHEMY_DATABASE_URL)
         with temp_engine.connect() as conn:
-            pass
+            try:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                conn.commit()
+            except Exception as ext_err:
+                logger.warning(f"[Database] Could not auto-enable vector extension: {ext_err}")
         engine = temp_engine
         logger.info("[Database] Connected to local PostgreSQL.")
     except Exception as e:
