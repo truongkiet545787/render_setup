@@ -45,7 +45,16 @@ class DetectRequest(BaseModel):
 class DetectResponse(BaseModel):
     name: str
     product_found: bool
+    source: Optional[str] = "database" # "vector_cache", "vlm_matched", "vlm_new", "database"
+    confidence: Optional[float] = 1.0
+    image_vector: Optional[List[float]] = None
     details: Optional[ProductResponse] = None
+
+class ConfirmDetectRequest(BaseModel):
+    product_name: str
+    is_correct: bool
+    corrected_name: Optional[str] = None
+    image_vector: Optional[List[float]] = None
 
 class ChatRequest(BaseModel):
     session_id: str
