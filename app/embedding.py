@@ -16,13 +16,16 @@ def get_image_embedding_model():
     """
     Lazy load FastEmbed ImageEmbedding model (ONNX based, lightweight ~100MB RAM).
     Uses Qdrant/clip-ViT-B-32-vision (512-dimensional output).
+    Configured with threads=1 for minimal memory footprint on free cloud instances.
     """
     global _embedding_model
     if _embedding_model is None:
         try:
+            import gc
             from fastembed import ImageEmbedding
             logger.info("[Embedding] Loading FastEmbed ONNX Image model (Qdrant/clip-ViT-B-32-vision)...")
-            _embedding_model = ImageEmbedding(model_name="Qdrant/clip-ViT-B-32-vision")
+            _embedding_model = ImageEmbedding(model_name="Qdrant/clip-ViT-B-32-vision", threads=1)
+            gc.collect()
             logger.info("[Embedding] Model loaded successfully.")
         except Exception as e:
             logger.error(f"[Embedding] Failed to load FastEmbed: {e}")
