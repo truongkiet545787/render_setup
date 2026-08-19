@@ -23,6 +23,13 @@ try:
         init_db_data(db)
     finally:
         db.close()
+
+    # Preload FastEmbed ONNX Image model
+    try:
+        from .embedding import get_image_embedding_model
+        get_image_embedding_model()
+    except Exception as em_err:
+        logger.warning(f"FastEmbed initial load warning: {em_err}")
 except Exception as error:
     logger.error(f"Database initialization error: {error}")
 
